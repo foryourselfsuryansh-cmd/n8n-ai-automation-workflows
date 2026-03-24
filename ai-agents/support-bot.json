@@ -1,0 +1,73 @@
+{
+  "name": "Gmail Customer Support Bot (Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "filters": { "readStatus": "unread", "labels": { "labelIds": ["INBOX"] } }
+      },
+      "id": "d4e5f6a7-0001-0001-0001-000000000001",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": { "gmailOAuth2": { "id": "YOUR_GMAIL_CREDENTIAL_ID", "name": "Gmail OAuth2" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const email = $input.first().json;\nconst from = email.from?.value?.[0]?.address || '';\nconst subject = email.subject || 'No Subject';\nconst body = email.text || email.snippet || '';\nconst messageId = email.id;\nconst threadId = email.threadId;\nreturn [{ json: { from, subject, body: body.slice(0, 2000), messageId, threadId } }];"
+      },
+      "id": "d4e5f6a7-0002-0002-0002-000000000002",
+      "name": "Parse Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are a professional customer support agent. Read the following customer email and write a helpful, empathetic reply. Be concise (under 150 words). Do not make up information you don't have. If you can't resolve their issue, tell them a human will follow up within 24 hours.\n\nFrom: {{ $json.from }}\nSubject: {{ $json.subject }}\nEmail Body:\n{{ $json.body }}\n\nWrite only the reply body. Start with a greeting using their first name if available."
+            }
+          ]
+        },
+        "options": { "maxTokens": 400, "temperature": 0.5 }
+      },
+      "id": "d4e5f6a7-0003-0003-0003-000000000003",
+      "name": "Claude Draft Reply",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": { "anthropicApi": { "id": "YOUR_ANTHROPIC_CREDENTIAL_ID", "name": "Anthropic API" } }
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Parse Email').item.json.messageId }}",
+        "threadId": "={{ $('Parse Email').item.json.threadId }}",
+        "message": "={{ $json.content[0].text }}",
+        "options": { "senderName": "Support Team" }
+      },
+      "id": "d4e5f6a7-0004-0004-0004-000000000004",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [900, 300],
+      "credentials": { "gmailOAuth2": { "id": "YOUR_GMAIL_CREDENTIAL_ID", "name": "Gmail OAuth2" } }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": { "main": [[{ "node": "Parse Email", "type": "main", "index": 0 }]] },
+    "Parse Email": { "main": [[{ "node": "Claude Draft Reply", "type": "main", "index": 0 }]] },
+    "Claude Draft Reply": { "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Polls Gmail for unread emails, uses Claude (claude-3-5-sonnet) to draft empathetic support replies, and sends the reply in the same thread automatically.",
+    "llm": "claude-3-5-sonnet-20241022",
+    "author": "foryourselfsuryansh-cmd"
+  }
+}
