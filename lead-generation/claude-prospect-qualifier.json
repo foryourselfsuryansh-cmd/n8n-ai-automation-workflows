@@ -1,0 +1,113 @@
+{
+  "name": "Claude Prospect Qualifier & Outreach Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "hours", "hoursInterval": 6 }] }
+      },
+      "id": "schedule-1",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "base": "={{ $env.AIRTABLE_BASE_ID }}",
+        "table": "Prospects",
+        "filterByFormula": "AND({Status} = 'New', {Qualified} = '')",
+        "maxRecords": 10,
+        "sort": [{ "field": "Created", "direction": "desc" }]
+      },
+      "id": "airtable-fetch",
+      "name": "Fetch New Prospects",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [460, 300],
+      "credentials": { "airtableTokenApi": { "id": "airtable-creds", "name": "Airtable API" } }
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-5\",\n  \"max_tokens\": 1024,\n  \"system\": \"You are an expert B2B sales development rep. Given prospect data, do two things: 1) Qualify the prospect (YES/NO) with a confidence score 0-100, 2) Write a personalized outreach email (subject + body) if qualified. Return JSON: {qualified: boolean, confidence: number, reason: string, email_subject: string, email_body: string}\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"Prospect: {{ $json.fields.Name }}, Title: {{ $json.fields.Title }}, Company: {{ $json.fields.Company }}, Industry: {{ $json.fields.Industry }}, LinkedIn: {{ $json.fields.LinkedIn }}, Notes: {{ $json.fields.Notes }}\"\n  }]\n}",
+        "options": { "timeout": 45000 }
+      },
+      "id": "claude-qualify",
+      "name": "Claude Qualify & Draft Email",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const claudeResponse = $input.first().json;\nconst text = claudeResponse.content[0].text;\ntry {\n  const data = JSON.parse(text);\n  return [{ json: { ...data, prospect_id: $('Fetch New Prospects').first().json.id } }];\n} catch(e) {\n  return [{ json: { qualified: false, confidence: 0, reason: 'Parse error', email_subject: '', email_body: '', prospect_id: $('Fetch New Prospects').first().json.id } }];\n}"
+      },
+      "id": "parse-result",
+      "name": "Parse Claude Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            { "leftValue": "={{ $json.qualified }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ]
+        }
+      },
+      "id": "check-qualified",
+      "name": "Qualified?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "base": "={{ $env.AIRTABLE_BASE_ID }}",
+        "table": "Prospects",
+        "id": "={{ $json.prospect_id }}",
+        "fields": {
+          "fieldMappingMode": "defineBelow",
+          "value": {
+            "mappingMode": "defineBelow",
+            "value": [
+              { "fieldId": "Qualified", "fieldValue": "={{ $json.qualified ? 'YES' : 'NO' }}" },
+              { "fieldId": "Score", "fieldValue": "={{ $json.confidence }}" },
+              { "fieldId": "Status", "fieldValue": "Reviewed" },
+              { "fieldId": "EmailDraft", "fieldValue": "={{ $json.email_body }}" }
+            ]
+          }
+        }
+      },
+      "id": "update-airtable",
+      "name": "Update Airtable",
+      "type": "n8n-nodes-base.airtable",
+      "typeVersion": 2,
+      "position": [1340, 200],
+      "credentials": { "airtableTokenApi": { "id": "airtable-creds", "name": "Airtable API" } }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Fetch New Prospects", "type": "main", "index": 0 }]] },
+    "Fetch New Prospects": { "main": [[{ "node": "Claude Qualify & Draft Email", "type": "main", "index": 0 }]] },
+    "Claude Qualify & Draft Email": { "main": [[{ "node": "Parse Claude Result", "type": "main", "index": 0 }]] },
+    "Parse Claude Result": { "main": [[{ "node": "Qualified?", "type": "main", "index": 0 }]] },
+    "Qualified?": { "main": [[{ "node": "Update Airtable", "type": "main", "index": 0 }], [{ "node": "Update Airtable", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "meta": { "templateId": "claude-prospect-qualifier", "templateCredsSetupCompleted": true },
+  "tags": [{ "name": "lead-generation" }, { "name": "claude" }, { "name": "outreach" }, { "name": "airtable" }]
+}
