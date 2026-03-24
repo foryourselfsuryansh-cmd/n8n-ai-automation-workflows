@@ -1,0 +1,60 @@
+name: Validate n8n Workflows
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.json'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**/*.json'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate Workflow JSON Files
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate JSON syntax
+        run: |
+          echo "Validating all n8n workflow JSON files..."
+          find . -name "*.json" -not -path "./.git/*" | while read file; do
+            echo "Checking: $file"
+            if ! python3 -m json.tool "$file" > /dev/null 2>&1; then
+              echo "ERROR: Invalid JSON in $file"
+              exit 1
+            fi
+          done
+          echo "All JSON files are valid!"
+
+      - name: Check workflow structure
+        run: |
+          echo "Checking n8n workflow structure..."
+          find . -name "*.json" -not -path "./.git/*" | while read file; do
+            # Check if it's an n8n workflow (has nodes key)
+            if python3 -c "
+import json, sys
+with open('$file') as f:
+    data = json.load(f)
+if 'nodes' in data:
+    print(f'Valid n8n workflow: $file (nodes: {len(data[\"nodes\"])})')
+" 2>/dev/null; then
+              true
+            fi
+          done
+          echo "Workflow structure check complete!"
+
+      - name: Count workflows
+        run: |
+          total=$(find . -name "*.json" -not -path "./.git/*" | wc -l)
+          echo "Total workflow files: $total"
+          echo "Repository contains $total n8n automation workflows"
