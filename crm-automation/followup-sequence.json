@@ -1,0 +1,86 @@
+{
+  "name": "3-Step Follow-up Email Sequence (Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 10 * * 1-5" }] }
+      },
+      "id": "a7b8c9d0-0001-0001-0001-000000000001",
+      "name": "Daily Check Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "mode": "id", "value": "YOUR_GOOGLE_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "CRM" },
+        "filtersUI": {
+          "values": [{ "lookupColumn": "Status", "lookupValue": "Contacted" }]
+        }
+      },
+      "id": "a7b8c9d0-0002-0002-0002-000000000002",
+      "name": "Get Contacted Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [460, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_GOOGLE_CREDENTIAL_ID", "name": "Google Sheets" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $input.first().json;\nconst contactedDate = new Date(lead['Contacted Date']);\nconst today = new Date();\nconst daysSince = Math.floor((today - contactedDate) / (1000 * 60 * 60 * 24));\nconst followUpCount = parseInt(lead['Follow-up Count'] || '0');\n\nlet shouldSend = false;\nlet emailType = '';\nif (followUpCount === 0 && daysSince >= 3) { shouldSend = true; emailType = 'follow_up_1'; }\nelse if (followUpCount === 1 && daysSince >= 7) { shouldSend = true; emailType = 'follow_up_2'; }\nelse if (followUpCount === 2 && daysSince >= 14) { shouldSend = true; emailType = 'follow_up_3'; }\n\nreturn shouldSend ? [{ json: { ...lead, emailType, daysSince } }] : [];"
+      },
+      "id": "a7b8c9d0-0003-0003-0003-000000000003",
+      "name": "Check Follow-up Timing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-haiku-20240307",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=Write a short follow-up email for a sales prospect. This is follow-up #{{ $json.emailType === 'follow_up_1' ? '1 (3 days after first contact)' : $json.emailType === 'follow_up_2' ? '2 (1 week later, add value)' : '3 (final check-in, soft close)' }}.\n\nProspect: {{ $json.Name }}, {{ $json.Company }}\nOriginal outreach was about: AI automation workflows for their business.\n\nRules:\n- Keep it under 80 words\n- Don't be pushy\n- Follow-up 1: gentle reminder + ask if they had a chance to review\n- Follow-up 2: share a relevant insight or tip\n- Follow-up 3: last check-in, offer to close the loop\n\nWrite only the email body."
+            }
+          ]
+        },
+        "options": { "maxTokens": 200, "temperature": 0.7 }
+      },
+      "id": "a7b8c9d0-0004-0004-0004-000000000004",
+      "name": "Claude Write Follow-up",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": { "anthropicApi": { "id": "YOUR_ANTHROPIC_CREDENTIAL_ID", "name": "Anthropic API" } }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Get Contacted Leads').item.json['Email'] }}",
+        "subject": "={{ 'Re: AI automation for ' + $('Get Contacted Leads').item.json['Company'] }}",
+        "message": "={{ $json.content[0].text }}"
+      },
+      "id": "a7b8c9d0-0005-0005-0005-000000000005",
+      "name": "Send Follow-up Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1120, 300],
+      "credentials": { "gmailOAuth2": { "id": "YOUR_GMAIL_CREDENTIAL_ID", "name": "Gmail OAuth2" } }
+    }
+  ],
+  "connections": {
+    "Daily Check Trigger": { "main": [[{ "node": "Get Contacted Leads", "type": "main", "index": 0 }]] },
+    "Get Contacted Leads": { "main": [[{ "node": "Check Follow-up Timing", "type": "main", "index": 0 }]] },
+    "Check Follow-up Timing": { "main": [[{ "node": "Claude Write Follow-up", "type": "main", "index": 0 }]] },
+    "Claude Write Follow-up": { "main": [[{ "node": "Send Follow-up Email", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Automated 3-step follow-up email sequence. Checks daily for leads due for follow-up, uses Claude to write contextual follow-up emails (day 3, day 7, day 14), and sends via Gmail.",
+    "llm": "claude-3-haiku-20240307",
+    "author": "foryourselfsuryansh-cmd"
+  }
+}
