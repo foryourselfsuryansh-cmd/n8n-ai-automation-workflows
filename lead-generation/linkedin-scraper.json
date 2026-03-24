@@ -1,0 +1,87 @@
+{
+  "name": "LinkedIn Lead Scraper + Claude Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 8 * * 1-5" }] }
+      },
+      "id": "e5f6a7b8-0001-0001-0001-000000000001",
+      "name": "Daily Trigger (Weekdays)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "actorId": "2Sjf1ZROVCHXwBJzE",
+        "input": {
+          "searchUrl": "https://www.linkedin.com/search/results/people/?keywords=CEO%20SaaS%20startup&origin=GLOBAL_SEARCH_HEADER",
+          "maxResults": 25,
+          "proxyConfiguration": { "useApifyProxy": true }
+        }
+      },
+      "id": "e5f6a7b8-0002-0002-0002-000000000002",
+      "name": "Apify LinkedIn Scraper",
+      "type": "n8n-nodes-base.apify",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "apifyApi": { "id": "YOUR_APIFY_CREDENTIAL_ID", "name": "Apify API" } }
+    },
+    {
+      "parameters": {
+        "model": "claude-3-haiku-20240307",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=Analyze this LinkedIn profile and return a JSON object with these fields:\n- lead_score (1-10, based on how likely they are to buy AI automation services)\n- pain_points (array of 2-3 likely business pain points)\n- personalization_hook (one sentence ice-breaker for outreach)\n- recommended_service (which automation service would help them most)\n\nProfile:\nName: {{ $json.fullName }}\nTitle: {{ $json.headline }}\nCompany: {{ $json.companyName }}\nSummary: {{ $json.summary }}\n\nReturn ONLY valid JSON."
+            }
+          ]
+        },
+        "options": { "maxTokens": 300, "temperature": 0.3 }
+      },
+      "id": "e5f6a7b8-0003-0003-0003-000000000003",
+      "name": "Claude Lead Scoring",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": { "anthropicApi": { "id": "YOUR_ANTHROPIC_CREDENTIAL_ID", "name": "Anthropic API" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('Apify LinkedIn Scraper').item.json;\nlet enrichment = {};\ntry { enrichment = JSON.parse($input.first().json.content[0].text); } catch(e) {}\nreturn [{ json: {\n  full_name: lead.fullName,\n  headline: lead.headline,\n  company: lead.companyName,\n  linkedin_url: lead.linkedinUrl,\n  location: lead.location,\n  lead_score: enrichment.lead_score || 0,\n  pain_points: (enrichment.pain_points || []).join('; '),\n  personalization_hook: enrichment.personalization_hook || '',\n  recommended_service: enrichment.recommended_service || '',\n  scraped_date: new Date().toISOString().split('T')[0]\n}}];"
+      },
+      "id": "e5f6a7b8-0004-0004-0004-000000000004",
+      "name": "Merge Lead Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "mode": "id", "value": "YOUR_GOOGLE_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "LinkedIn Leads" },
+        "columns": { "mappingMode": "autoMapInputData" }
+      },
+      "id": "e5f6a7b8-0005-0005-0005-000000000005",
+      "name": "Save to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1120, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_GOOGLE_CREDENTIAL_ID", "name": "Google Sheets" } }
+    }
+  ],
+  "connections": {
+    "Daily Trigger (Weekdays)": { "main": [[{ "node": "Apify LinkedIn Scraper", "type": "main", "index": 0 }]] },
+    "Apify LinkedIn Scraper": { "main": [[{ "node": "Claude Lead Scoring", "type": "main", "index": 0 }]] },
+    "Claude Lead Scoring": { "main": [[{ "node": "Merge Lead Data", "type": "main", "index": 0 }]] },
+    "Merge Lead Data": { "main": [[{ "node": "Save to Google Sheets", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Scrapes LinkedIn profiles daily using Apify, enriches each lead with Claude AI (scoring, pain points, personalization hook), and saves enriched data to Google Sheets.",
+    "llm": "claude-3-haiku-20240307",
+    "author": "foryourselfsuryansh-cmd"
+  }
+}
