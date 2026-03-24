@@ -1,0 +1,70 @@
+{
+  "name": "Claude Multi-Platform Content Generator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-content",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Content Request Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-5\",\n  \"max_tokens\": 2048,\n  \"system\": \"You are an expert social media content strategist. Given a topic and brand voice, create platform-optimized content for LinkedIn, Twitter/X, and Instagram. Return ONLY a JSON object with keys: linkedin (string, professional post 150-300 words with hashtags), twitter (string, max 280 chars, punchy with 2-3 hashtags), instagram (string, engaging caption 100-150 words with 10-15 hashtags), hook (string, attention-grabbing opening line used across platforms).\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"Topic: {{ $json.body.topic }}\\nBrand Voice: {{ $json.body.brand_voice || 'professional and helpful' }}\\nTarget Audience: {{ $json.body.target_audience || 'business professionals' }}\\nCall to Action: {{ $json.body.cta || 'Learn more' }}\"\n  }]\n}",
+        "options": { "timeout": 45000 }
+      },
+      "id": "claude-generate",
+      "name": "Claude Content Generator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst text = response.content[0].text;\ntry {\n  const content = JSON.parse(text);\n  return [{ json: { ...content, generated_at: new Date().toISOString(), model: response.model, tokens_used: response.usage.output_tokens } }];\n} catch(e) {\n  return [{ json: { linkedin: text, twitter: text.substring(0, 280), instagram: text, hook: text.split('.')[0], error: 'Could not parse structured response' } }];\n}"
+      },
+      "id": "parse-content",
+      "name": "Parse Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, content: $json, generated_at: $json.generated_at }) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond",
+      "name": "Return Content",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 300]
+    }
+  ],
+  "connections": {
+    "Content Request Webhook": { "main": [[{ "node": "Claude Content Generator", "type": "main", "index": 0 }]] },
+    "Claude Content Generator": { "main": [[{ "node": "Parse Content", "type": "main", "index": 0 }]] },
+    "Parse Content": { "main": [[{ "node": "Return Content", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "meta": { "templateId": "claude-content-generator", "templateCredsSetupCompleted": true },
+  "tags": [{ "name": "social-media" }, { "name": "content" }, { "name": "claude" }, { "name": "linkedin" }, { "name": "twitter" }]
+}
