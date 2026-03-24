@@ -1,0 +1,81 @@
+{
+  "name": "AI Content Scheduler (Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": { "interval": [{ "field": "cronExpression", "expression": "0 7 * * 1" }] }
+      },
+      "id": "b8c9d0e1-0001-0001-0001-000000000001",
+      "name": "Monday Morning Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "Generate a week's worth of social media content (5 posts) for an AI automation business. Each post should be for LinkedIn.\n\nReturn a JSON array with 5 objects, each having:\n- day (Monday through Friday)\n- hook (first line, attention-grabbing)\n- body (2-3 sentences of value)\n- cta (call to action)\n- hashtags (array of 5 relevant hashtags)\n\nTopics to rotate through: AI automation ROI, n8n tutorials, lead generation automation, time-saving workflows, client success stories.\n\nReturn ONLY valid JSON array."
+            }
+          ]
+        },
+        "options": { "maxTokens": 1500, "temperature": 0.8 }
+      },
+      "id": "b8c9d0e1-0002-0002-0002-000000000002",
+      "name": "Claude Generate Week Content",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "credentials": { "anthropicApi": { "id": "YOUR_ANTHROPIC_CREDENTIAL_ID", "name": "Anthropic API" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.content[0].text;\nlet posts = [];\ntry { posts = JSON.parse(raw); } catch(e) { posts = []; }\nreturn posts.map(p => ({ json: p }));"
+      },
+      "id": "b8c9d0e1-0003-0003-0003-000000000003",
+      "name": "Parse Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "mode": "id", "value": "YOUR_GOOGLE_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Content Calendar" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Week Of": "={{ $now.format('yyyy-MM-dd') }}",
+            "Day": "={{ $json.day }}",
+            "Hook": "={{ $json.hook }}",
+            "Body": "={{ $json.body }}",
+            "CTA": "={{ $json.cta }}",
+            "Hashtags": "={{ $json.hashtags.join(' ') }}",
+            "Status": "Draft"
+          }
+        }
+      },
+      "id": "b8c9d0e1-0004-0004-0004-000000000004",
+      "name": "Save to Content Calendar",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [900, 300],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "YOUR_GOOGLE_CREDENTIAL_ID", "name": "Google Sheets" } }
+    }
+  ],
+  "connections": {
+    "Monday Morning Trigger": { "main": [[{ "node": "Claude Generate Week Content", "type": "main", "index": 0 }]] },
+    "Claude Generate Week Content": { "main": [[{ "node": "Parse Posts", "type": "main", "index": 0 }]] },
+    "Parse Posts": { "main": [[{ "node": "Save to Content Calendar", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "meta": {
+    "description": "Every Monday, Claude generates a full week of LinkedIn content (5 posts with hooks, body, CTA, hashtags) and saves them to a Google Sheets content calendar for review and posting.",
+    "llm": "claude-3-5-sonnet-20241022",
+    "author": "foryourselfsuryansh-cmd"
+  }
+}
