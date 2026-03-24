@@ -27,7 +27,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-5\",\n  \"max_tokens\": 512,\n  \"system\": \"You are a B2B sales lead scoring expert. Score leads from 0-100 based on their profile data. Return ONLY a JSON object with fields: score (number 0-100), tier (hot/warm/cold), reason (string), next_action (string).\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"Score this lead: Name: {{ $json.body.name }}, Company: {{ $json.body.company }}, Title: {{ $json.body.title }}, Email: {{ $json.body.email }}, Company Size: {{ $json.body.company_size }}, Industry: {{ $json.body.industry }}, Message: {{ $json.body.message }}\"\n  }]\n}",
+        "jsonBody": "={ \"model\": \"claude-sonnet-4-5\", \"max_tokens\": 512, \"system\": \"You are a B2B sales lead scoring expert. Score leads from 0-100 based on their profile data. Return ONLY a JSON object with fields: score (number 0-100), tier (hot/warm/cold), reason (string), next_action (string).\", \"messages\": [{ \"role\": \"user\", \"content\": \"Score this lead: Name: {{ $json.body.name }}, Company: {{ $json.body.company }}, Title: {{ $json.body.title }}, Email: {{ $json.body.email }}, Company Size: {{ $json.body.company_size }}, Industry: {{ $json.body.industry }}, Message: {{ $json.body.message }}\" }] }",
         "options": { "timeout": 30000 }
       },
       "id": "claude-score",
@@ -38,7 +38,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const response = $input.first().json;\nconst text = response.content[0].text;\ntry {\n  const parsed = JSON.parse(text);\n  return [{ json: { ...parsed, raw_response: text } }];\n} catch(e) {\n  const scoreMatch = text.match(/score[\":\s]+(\\d+)/i);\n  return [{ json: { score: scoreMatch ? parseInt(scoreMatch[1]) : 50, tier: 'warm', reason: text, next_action: 'Manual review required' } }];\n}"
+        "jsCode": "const response = $input.first().json;\nconst text = response.content[0].text;\ntry {\n  const parsed = JSON.parse(text);\n  return [{ json: { ...parsed, raw_response: text } }];\n} catch(e) {\n  const scoreMatch = text.match(/score[\":\\s]+(\\d+)/i);\n  return [{ json: { score: scoreMatch ? parseInt(scoreMatch[1]) : 50, tier: 'warm', reason: text, next_action: 'Manual review required' } }];\n}"
       },
       "id": "parse-score",
       "name": "Parse Score",
@@ -69,7 +69,7 @@
         "url": "={{ $env.SLACK_WEBHOOK_URL }}",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={ \"text\": \"🔥 HOT LEAD ALERT!\\nScore: {{ $json.score }}/100\\nTier: {{ $json.tier }}\\nReason: {{ $json.reason }}\\nNext Action: {{ $json.next_action }}\" }",
+        "jsonBody": "={ \"text\": \"HOT LEAD ALERT! Score: {{ $json.score }}/100 | Tier: {{ $json.tier }} | Reason: {{ $json.reason }} | Next Action: {{ $json.next_action }}\" }",
         "options": {}
       },
       "id": "slack-alert",
