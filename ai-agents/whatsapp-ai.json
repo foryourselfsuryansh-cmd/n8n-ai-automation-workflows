@@ -1,0 +1,109 @@
+{
+  "name": "WhatsApp AI Responder (Claude)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "responseMode": "responseNode"
+      },
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body;\nconst from = body.From || '';\nconst messageBody = body.Body || '';\nreturn [{ json: { from, messageBody } }];"
+      },
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Extract Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "claude-3-5-sonnet-20241022",
+        "messages": {
+          "values": [
+            {
+              "role": "user",
+              "content": "=You are a helpful business assistant responding to WhatsApp messages. Be concise, friendly, and professional.\n\nCustomer message: {{ $json.messageBody }}\n\nRespond helpfully in 2-3 sentences max."
+            }
+          ]
+        },
+        "options": {
+          "maxTokens": 300,
+          "temperature": 0.7
+        }
+      },
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "Claude AI Response",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "anthropicApi": {
+          "id": "YOUR_ANTHROPIC_CREDENTIAL_ID",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "credentials",
+        "resource": "message",
+        "operation": "send",
+        "from": "={{ $('WhatsApp Webhook').item.json.body.To }}",
+        "to": "={{ $('Extract Message').item.json.from }}",
+        "message": "={{ $json.content[0].text }}"
+      },
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "Send WhatsApp Reply",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK"
+      },
+      "id": "a1b2c3d4-0005-0005-0005-000000000005",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [[{ "node": "Extract Message", "type": "main", "index": 0 }]]
+    },
+    "Extract Message": {
+      "main": [[{ "node": "Claude AI Response", "type": "main", "index": 0 }]]
+    },
+    "Claude AI Response": {
+      "main": [[{ "node": "Send WhatsApp Reply", "type": "main", "index": 0 }]]
+    },
+    "Send WhatsApp Reply": {
+      "main": [[{ "node": "Webhook Response", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "description": "Receive WhatsApp messages via Twilio webhook, generate intelligent replies using Claude (claude-3-5-sonnet), and send the response back automatically. Requires: Anthropic API key, Twilio account with WhatsApp sandbox.",
+    "llm": "claude-3-5-sonnet-20241022",
+    "author": "foryourselfsuryansh-cmd"
+  }
+}
