@@ -1,0 +1,109 @@
+{
+  "name": "Claude AI Lead Scoring & CRM Update",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "score-lead",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "New Lead Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-api-key", "value": "={{ $env.ANTHROPIC_API_KEY }}" },
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-5\",\n  \"max_tokens\": 512,\n  \"system\": \"You are a B2B sales lead scoring expert. Score leads from 0-100 based on their profile data. Return ONLY a JSON object with fields: score (number 0-100), tier (hot/warm/cold), reason (string), next_action (string).\",\n  \"messages\": [{\n    \"role\": \"user\",\n    \"content\": \"Score this lead: Name: {{ $json.body.name }}, Company: {{ $json.body.company }}, Title: {{ $json.body.title }}, Email: {{ $json.body.email }}, Company Size: {{ $json.body.company_size }}, Industry: {{ $json.body.industry }}, Message: {{ $json.body.message }}\"\n  }]\n}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "claude-score",
+      "name": "Claude Lead Scorer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst text = response.content[0].text;\ntry {\n  const parsed = JSON.parse(text);\n  return [{ json: { ...parsed, raw_response: text } }];\n} catch(e) {\n  const scoreMatch = text.match(/score[\":\s]+(\\d+)/i);\n  return [{ json: { score: scoreMatch ? parseInt(scoreMatch[1]) : 50, tier: 'warm', reason: text, next_action: 'Manual review required' } }];\n}"
+      },
+      "id": "parse-score",
+      "name": "Parse Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 70,
+              "operator": { "type": "number", "operation": "gte" }
+            }
+          ]
+        }
+      },
+      "id": "route-lead",
+      "name": "Hot Lead?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={ \"text\": \"🔥 HOT LEAD ALERT!\\nScore: {{ $json.score }}/100\\nTier: {{ $json.tier }}\\nReason: {{ $json.reason }}\\nNext Action: {{ $json.next_action }}\" }",
+        "options": {}
+      },
+      "id": "slack-alert",
+      "name": "Slack Hot Lead Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": { "responseCode": 200 }
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "New Lead Webhook": { "main": [[{ "node": "Claude Lead Scorer", "type": "main", "index": 0 }]] },
+    "Claude Lead Scorer": { "main": [[{ "node": "Parse Score", "type": "main", "index": 0 }]] },
+    "Parse Score": { "main": [[{ "node": "Hot Lead?", "type": "main", "index": 0 }]] },
+    "Hot Lead?": {
+      "main": [
+        [{ "node": "Slack Hot Lead Alert", "type": "main", "index": 0 }],
+        [{ "node": "Respond", "type": "main", "index": 0 }]
+      ]
+    },
+    "Slack Hot Lead Alert": { "main": [[{ "node": "Respond", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1", "saveManualExecutions": true },
+  "meta": { "templateId": "claude-lead-scoring", "templateCredsSetupCompleted": true },
+  "tags": [{ "name": "crm" }, { "name": "lead-scoring" }, { "name": "claude" }, { "name": "sales" }]
+}
